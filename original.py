@@ -4,6 +4,7 @@ import streamlit as st
 import whisper         
 import os              
 import google.generativeai as GenAI
+from pathlib import Path
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # This is the visual part of the page 
 st.set_page_config(page_title="Gen", page_icon="🪄")
@@ -54,8 +55,10 @@ def crear_pptx(texto_generado):
     import re
 
     # 👉 CARGA TU PLANTILLA AQUÍ
-    prs = Presentation("mi_plantilla.pptx")
-
+    BASE_DIR = Path(__file__).parent
+    template = BASE_DIR / "mi_plantilla.pptx"
+    
+    prs = Presentation(str(template))
     # 👉 ELIMINA LAS DIAPOSITIVAS DE EJEMPLO DE LA PLANTILLA
     for i in range(len(prs.slides) - 1, -1, -1):
         rId = prs.slides._sldIdLst[i]
