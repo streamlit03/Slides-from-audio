@@ -24,6 +24,11 @@ from reportlab.lib.units import inch
 import re
 
 
+def load_whisper():
+    return whisper.load_model("base")
+
+
+
 # ======================================================================================================================
 # PAGE CONFIG & UI HEADER
 # ======================================================================================================================
@@ -37,7 +42,7 @@ st.markdown(
         text-align: center;
         text-shadow: 2px 2px 10px rgba(0,0,0,0.7);
     ">
-    🪄 Transcription and Slide Creator
+    🪄 𝑻𝒓𝒂𝒏𝒔𝒄𝒓𝒊𝒑𝒕𝒊𝒐𝒏 & 𝑺𝒍𝒊𝒅𝒆 𝑪𝒓𝒆𝒂𝒕𝒐𝒓
     </h1>
     """,
     unsafe_allow_html=True
@@ -197,16 +202,16 @@ def crear_pdf(texto_generado):
 # ======================================================================================================================
 # AUDIO UPLOAD & TRANSCRIPTION
 # ======================================================================================================================
-audio_Recorded = st.audio_input("Record your audio ")
+audio_Recorded = st.audio_input("𝑹𝒆𝒄𝒐𝒓𝒅 𝒚𝒐𝒖𝒓 𝒂𝒖𝒅𝒊𝒐")
 audio_Fill = st.file_uploader(
-    "Upload your audio so we can transcribe",
+    "𝑼𝒑𝒍𝒐𝒂𝒅 𝒚𝒐𝒖𝒓 𝒂𝒖𝒅𝒊𝒐",
     type=["mp3", "mp4", "opus", "wav", "m4a"]
 )
 Audio_fill = audio_Fill or audio_Recorded
 
 if Audio_fill is not None:
-    st.subheader("🎧 Preview your audio")
-    st.audio(Audio_fill)
+    with st.expander("Show audio"):
+     st.audio(Audio_fill)
 
     MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -214,14 +219,13 @@ if Audio_fill is not None:
         st.error("The audio is too long or too short. Please upload a file shorter than 3 minutes. (MAX 10MB)")
         st.stop()
 
-    with open("temp_audio.mp3", "wb") as f:
+    with open("temp_audio.wav", "wb") as f:
         f.write(Audio_fill.getbuffer())
 
     with st.spinner("Whisper is processing your audio"):
-        modelo_whisper = whisper.load_model("base")
-        resultado = modelo_whisper.transcribe("temp_audio.mp3")
+        modelo_whisper = load_whisper()
+        resultado = modelo_whisper.transcribe("temp_audio.wav")
 
-    st.success("Transcription success")
 
     with st.expander("Show transcription"):
         st.write(resultado["text"])
@@ -296,8 +300,6 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
 
         answer = modelo_gemini.generate_content(instruction)
 
-    st.header("📝 Generated Content")
-    st.info("Everything is ready! You can review the content below and download your slides.")
 
     with st.expander("Show Content"):
         st.write(answer.text)
@@ -325,5 +327,6 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
 
     st.balloons()
 
-    if os.path.exists("temp_audio.mp3"):
-        os.remove("temp_audio.mp3")
+    if os.path.exists("temp_audio.wav"):
+        os.remove("temp_audio.wav")
+
