@@ -4,4 +4,4 @@ setuptools-rust
 google-generativeai
 python-pptx
 streamlit-audiorecorder
-
+reportlab
