@@ -4,11 +4,6 @@ import streamlit as st
 import whisper         
 import os              
 import google.generativeai as GenAI
-from pptx import Presentation 
-from io import BytesIO
-from pptx.util import Pt
-from pptx.enum.text import MSO_AUTO_SIZE
-import re
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # This is the visual part of the page 
 st.set_page_config(page_title="Gen", page_icon="🪄")
@@ -51,95 +46,93 @@ GenAI.configure(api_key=st.secrets["API_KEY"])
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # PowerPoint Function
 def crear_pptx(texto_generado):
-    prs = Presentation()
+    from pptx import Presentation
+    from pptx.util import Pt
+    from pptx.enum.text import MSO_AUTO_SIZE
+    from pptx.dml.color import RGBColor
+    from io import BytesIO
+    import re
 
-    # Busca bloques entre --- SLIDE N ---
+    # 👉 CARGA TU PLANTILLA AQUÍ
+    prs = Presentation("mi_plantilla.pptx")
+
+    # 👉 ELIMINA LAS DIAPOSITIVAS DE EJEMPLO DE LA PLANTILLA
+    for i in range(len(prs.slides) - 1, -1, -1):
+        rId = prs.slides._sldIdLst[i]
+        prs.slides._sldIdLst.remove(rId)
+
+    # BUSCA BLOQUES --- SLIDE N ---
     pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
     slides = re.findall(pattern, texto_generado, flags=re.S)
 
-    # Fallback si no encuentra el patrón (mantén compatibilidad)
-    if not slides:
-        slides = [s for s in re.split(r"---\s*SLIDE", texto_generado) if s.strip()]
-
     for slide_text in slides:
-        # Limpia líneas vacías
-        lines = [l.strip() for l in slide_text.strip().splitlines() if l.strip()]
+        lines = [l.strip() for l in slide_text.splitlines() if l.strip()]
         if not lines:
             continue
 
-        # Primera línea = título
         title = lines[0]
 
-        # Buscamos si hay una sección de notas (ej: empieza con "notes" o "notes_slide")
         notes_idx = None
         for i, ln in enumerate(lines[1:], start=1):
-            if ln.lower().startswith("notes") or ln.lower().startswith("notes_slide") or ln.lower().startswith("notes:"):
+            if ln.lower().startswith("notes"):
                 notes_idx = i
                 break
 
         if notes_idx is not None:
-            bullets_lines = lines[1:notes_idx]
-            notes_lines = lines[notes_idx+1:]  # lo que venga después de la etiqueta notes
+            bullets = lines[1:notes_idx]
+            notes_lines = lines[notes_idx + 1:]
         else:
-            bullets_lines = lines[1:]
-            notes_lines = []
+            bullets = lines[1:]
+            notes_lines = bullets
 
-        # Normaliza bullets: quita prefijos tipo "*", "-", "•"
-        bullets = [re.sub(r'^[\*\-\u2022]\s*', '', b) for b in bullets_lines]
+        bullets = [re.sub(r'^[\*\-\u2022]\s*', '', b) for b in bullets]
 
-        # Crea la diapositiva con layout "Título y contenido"
-        slide_layout = prs.slide_layouts[1]
-        slide = prs.slides.add_slide(slide_layout)
+        # 👉 USA EL LAYOUT TÍTULO + CONTENIDO
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
 
-        # Título
-        if slide.shapes.title:
-            slide.shapes.title.text = title
+        # ===== TÍTULO =====
+        title_shape = slide.shapes.title
+        title_tf = title_shape.text_frame
+        title_tf.clear()
+        p_title = title_tf.paragraphs[0]
+        p_title.text = title
 
-        # Cuerpo (placeholders[1]) -> formatear como bullets nativos
-        if len(slide.placeholders) > 1:
-            tf = slide.placeholders[1].text_frame
-            tf.clear()  # limpia contenido por defecto
-            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        for run in p_title.runs:
+            run.font.size = Pt(36)
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(255, 255, 255)
 
-            if bullets:
-                # primer párrafo
-                p = tf.paragraphs[0]
-                p.text = bullets[0]
+        # ===== BULLETS =====
+        body = slide.placeholders[1]
+        tf = body.text_frame
+        tf.clear()
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+
+        if bullets:
+            p = tf.paragraphs[0]
+            p.text = bullets[0]
+            p.level = 0
+
+            for run in p.runs:
+                run.font.size = Pt(20)
+                run.font.color.rgb = RGBColor(230, 230, 230)
+
+            for b in bullets[1:]:
+                p = tf.add_paragraph()
+                p.text = b
                 p.level = 0
-                # ajustar tamaño fuente
                 for run in p.runs:
-                    run.font.size = Pt(20)
+                    run.font.size = Pt(18)
+                    run.font.color.rgb = RGBColor(230, 230, 230)
 
-                # resto de bullets
-                for b in bullets[1:]:
-                    p = tf.add_paragraph()
-                    p.text = b
-                    p.level = 0
-                    for run in p.runs:
-                        run.font.size = Pt(18)
-            else:
-                tf.text = ""
+        # ===== NOTAS DEL ORADOR =====
+        notes_text = "\n".join(notes_lines)
+        slide.notes_slide.notes_text_frame.text = notes_text
 
-
-        # Notas del orador (speaker notes) — aquí vamos a escribirlas
-        notes_text = ""
-        if notes_lines:
-            notes_text = "\n".join(notes_lines)
-        else:
-            # Si no hay sección explícita de notas, usamos los bullets como guía
-            notes_text = "\n".join(bullets)
-
-        # Asigna las notas reales
-        try:
-            slide.notes_slide.notes_text_frame.text = notes_text
-        except Exception:
-            # en caso raro que no exista, lo ignoramos
-            pass
-
-    # Guarda a bytes
     pptx_io = BytesIO()
     prs.save(pptx_io)
     return pptx_io.getvalue()
+
 
 #--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #Transcription Function
