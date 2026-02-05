@@ -16,6 +16,11 @@ from io import BytesIO
 from pptx.util import Pt
 from pptx.enum.text import MSO_AUTO_SIZE
 
+
+from reportlab.lib.pagesizes import LETTER
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch
+
 import re
 
 
@@ -144,15 +149,60 @@ def crear_pptx(texto_generado):
     prs.save(pptx_io)
     return pptx_io.getvalue()
 
+# ======================================================================================================================
+# POWERPOINT CREATION FUNCTION
+# ======================================================================================================================
+
+def crear_pdf(texto_generado):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=LETTER)
+    width, height = LETTER
+
+    pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
+    slides = re.findall(pattern, texto_generado, flags=re.S)
+
+    if not slides:
+        slides = [s for s in re.split(r"---\s*SLIDE", texto_generado) if s.strip()]
+
+    for slide_text in slides:
+        lines = [l.strip() for l in slide_text.splitlines() if l.strip()]
+        if not lines:
+            continue
+
+        title = lines[0]
+
+        bullets = []
+        for line in lines[1:]:
+            if line.lower().startswith("notes"):
+                break
+            bullets.append(re.sub(r'^[\*\-\u2022]\s*', '', line))
+
+        y = height - 1.2 * inch
+
+        c.setFont("Helvetica-Bold", 20)
+        c.drawString(1 * inch, y, title)
+        y -= 0.6 * inch
+
+        c.setFont("Helvetica", 14)
+        for bullet in bullets:
+            c.drawString(1.2 * inch, y, f"• {bullet}")
+            y -= 0.35 * inch
+
+        c.showPage()
+
+    c.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 # ======================================================================================================================
 # AUDIO UPLOAD & TRANSCRIPTION
 # ======================================================================================================================
-
-Audio_fill = st.file_uploader(
+audio_Recorded = st.audio_input("Record your audio ")
+audio_Fill = st.file_uploader(
     "Upload your audio so we can transcribe",
     type=["mp3", "mp4", "opus", "wav", "m4a"]
 )
+Audio_fill = audio_Fill or audio_Recorded
 
 if Audio_fill is not None:
     st.subheader("🎧 Preview your audio")
@@ -253,6 +303,7 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
         st.write(answer.text)
 
     pptx_data = crear_pptx(answer.text)
+    pdf_data = crear_pdf(answer.text)
 
     st.download_button(
         label="🚀 DOWNLOAD YOUR POWERPOINT",
@@ -261,6 +312,16 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         use_container_width=True
     )
+
+
+    st.download_button(
+    label="📄 DOWNLOAD PDF",
+    data=pdf_data,
+    file_name="Presentation.pdf",
+    mime="application/pdf",
+    use_container_width=True
+)
+
 
     st.balloons()
 
