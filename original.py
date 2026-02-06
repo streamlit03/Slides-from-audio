@@ -90,7 +90,7 @@ GenAI.configure(api_key=st.secrets["API_KEY"])
 # ======================================================================================================================
 
 def crear_pptx(texto_generado):
-    prs = Presentation()
+    prs = Presentation("template.pptx")
 
     pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
     slides = re.findall(pattern, texto_generado, flags=re.S)
