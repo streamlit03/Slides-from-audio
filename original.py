@@ -11,6 +11,7 @@ import streamlit as st
 import whisper
 import google.generativeai as GenAI
 
+
 from pptx import Presentation
 from io import BytesIO
 from pptx.util import Pt
@@ -209,15 +210,14 @@ audio_Fill = st.file_uploader(
 )
 Audio_fill = audio_Fill or audio_Recorded
 
+
 if Audio_fill is not None:
+    MAX_FILE_SIZE = 30 * 1024 * 1024
+    if Audio_fill.size > MAX_FILE_SIZE:
+        st.error("The audio is too long or too short. Please upload a file shorter than 30 minutes. (MAX 30MB)")
+        st.stop()
     with st.expander("Show audio"):
      st.audio(Audio_fill)
-
-    MAX_FILE_SIZE = 10 * 1024 * 1024
-
-    if Audio_fill.size > MAX_FILE_SIZE:
-        st.error("The audio is too long or too short. Please upload a file shorter than 3 minutes. (MAX 10MB)")
-        st.stop()
 
     with open("temp_audio.wav", "wb") as f:
         f.write(Audio_fill.getbuffer())
@@ -241,61 +241,54 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
         modelo_gemini = GenAI.GenerativeModel('models/gemini-2.5-flash')
 
         instruction = f"""
-            Analyze the audio transcript: {resultado['text']} and generate ONLY clearly separated slides following these STRICT rules.
+Analyze the following audio transcription and generate a presentation based ONLY on its content:
 
-            !!! CRITICAL: LANGUAGE ENFORCEMENT !!!
-            1. FIRST, analyze the input text to identify the source language exactly.
-            2. YOUR OUTPUT MUST BE 100% IN THAT IDENTIFIED SOURCE LANGUAGE.
-            3. IF the audio is in English -> Generate slides/notes in ENGLISH.
-            4. IF the audio is in French -> Generate slides/notes in FRENCH.
-            5. DO NOT translate to Spanish unless the audio is actually in Spanish.
-            6. IGNORE the language of these instructions; follow ONLY the language of the transcript.
+{resultado['text']}
 
-            === BEGIN INSTRUCTIONS ===
+=== LANGUAGE RULE (MANDATORY) ===
+1. Detect the original language of the transcription.
+2. ALL output (slides and notes) MUST be written 100% in that same language.
+3. Do NOT translate the content.
+4. Ignore the language of these instructions; follow ONLY the language of the transcription.
 
-            1. TRANSCRIPTION
-            Include the complete transcription of the audio.
-            Write it ONLY in the original source language.
-            Place it at the beginning under the heading:
-            === TRANSCRIPTION ===
+=== CONTENT RULE ===
+Generate slides that summarize, organize, and explain the ideas PRESENT IN THE TRANSCRIPTION.
+Do NOT invent topics.
+Do NOT add external information.
+Base every slide strictly on what is said in the audio.
 
-            2. INSTRUCTION DETECTION
-            Determine whether the audio contains a clear instruction to create content.
+=== SLIDE GENERATION RULES ===
 
-            3. IF A CLEAR INSTRUCTION EXISTS
-            Generate a presentation with a MINIMUM of 5 SLIDES.
-            Each slide must be clearly separated and numbered.
-            Each slide must represent a distinct idea or part of the requested content.
+• Create a presentation with a MINIMUM of 5 slides.
+• Each slide must represent a distinct idea or section derived from the transcription.
+• Slides must be clearly separated using EXACTLY this format:
 
-            Inside each slide:
-            First line: Short Title
-            Following lines: Bullet-point content only
+--- SLIDE N ---
 
-            Use EXACTLY this separator:
-            --- SLIDE N ---
+=== SLIDE STRUCTURE (MANDATORY) ===
 
-            4. SLIDE STRUCTURE (MANDATORY)
-            Each slide MUST follow this exact internal structure:
+Title  
+• Bullet point  
+• Bullet point  
 
-            Title
-            • Bullet point
-            • Bullet point
+notes_slide:
+Write natural, detailed speaker notes explaining the slide content as if a real presenter were speaking.
+The notes must expand the bullets using only information from the transcription.
 
-            notes_slide:
-            Full, natural speaker notes written as if a real presenter were explaining the slide aloud.
-            Notes must expand the slide content and provide context, explanations, or examples.
-            *** THE NOTES MUST BE IN THE SAME LANGUAGE AS THE TRANSCRIPT ***
+=== FORMAT RULES ===
+• Do NOT place notes outside `notes_slide`.
+• Do NOT add explanations, comments, or text outside the defined structure.
+• Output MUST be strictly formatted for automated slide + speaker notes generation.
+• If the transcription is short, still generate slides by grouping ideas logically.
 
-            5. IF NO CLEAR INSTRUCTION EXISTS
-            Generate ONLY ONE slide.
-            Clearly state (in the source language) that an explicit instruction is required in the audio.
-            That slide MUST also include notes_slide.
+=== FALLBACK RULE ===
+If the transcription does NOT contain enough information to build slides:
+• Generate ONLY ONE slide.
+• State clearly that the audio does not provide sufficient structured content.
+• Include a `notes_slide` explaining this.
 
-            6. FORMAT RESTRICTIONS
-            Speaker notes must appear ONLY inside notes_slide.
-            Do NOT place notes in the slide body.
-            Do NOT add explanations, comments, or text outside the defined structure.
-            Output must be strictly structured for PowerPoint slide + notes usage.
+Return ONLY the structured slide content.
+
         """
 
         answer = modelo_gemini.generate_content(instruction)
