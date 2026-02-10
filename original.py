@@ -21,6 +21,8 @@ from pptx.enum.text import MSO_AUTO_SIZE
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import Paragraph
 
 import re
 
@@ -88,10 +90,10 @@ GenAI.configure(api_key=st.secrets["API_KEY"])
 # ======================================================================================================================
 # POWERPOINT CREATION FUNCTION
 # ======================================================================================================================
-
 def crear_pptx(texto_generado):
     prs = Presentation("template.pptx")
 
+    # Patrón mejorado para capturar el bloque completo entre diapositivas
     pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
     slides = re.findall(pattern, texto_generado, flags=re.S)
 
@@ -103,58 +105,56 @@ def crear_pptx(texto_generado):
         if not lines:
             continue
 
-        title = lines[0]
+        # El primer elemento es siempre el Título
+        title_text = lines[0]
 
+        # Identificamos dónde empiezan las notas para separar el cuerpo
         notes_idx = None
-        for i, ln in enumerate(lines[1:], start=1):
+        for i, ln in enumerate(lines):
             if ln.lower().startswith(("notes", "notes_slide", "notes:")):
                 notes_idx = i
                 break
 
+        # Extraemos el cuerpo (párrafo) y las notas
         if notes_idx is not None:
-            bullets_lines = lines[1:notes_idx]
-            notes_lines = lines[notes_idx + 1:]
+            body_content = "\n".join(lines[1:notes_idx])
+            notes_text = "\n".join(lines[notes_idx + 1:])
         else:
-            bullets_lines = lines[1:]
-            notes_lines = []
+            body_content = "\n".join(lines[1:])
+            notes_text = ""
 
-        bullets = [re.sub(r'^[\*\-\u2022]\s*', '', b) for b in bullets_lines]
-
+        # Usamos el layout 1 (Título y Objetos)
         slide = prs.slides.add_slide(prs.slide_layouts[1])
 
+        # 1. Configurar Título (con tamaño controlado)
         if slide.shapes.title:
-            slide.shapes.title.text = title
+            slide.shapes.title.text = title_text
+            for paragraph in slide.shapes.title.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(32) # Tamaño ideal para títulos largos
 
+        # 2. Configurar Cuerpo (como un solo párrafo fluido)
         if len(slide.placeholders) > 1:
             tf = slide.placeholders[1].text_frame
             tf.clear()
-            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            tf.word_wrap = True # Evita que el texto se salga horizontalmente
+            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE # Ajuste automático si sobra texto
+            
+            p = tf.paragraphs[0]
+            p.text = body_content
+            for run in p.runs:
+                run.font.size = Pt(18) # Tamaño de lectura para párrafos extensos
 
-            if bullets:
-                p = tf.paragraphs[0]
-                p.text = bullets[0]
-                p.level = 0
-                for run in p.runs:
-                    run.font.size = Pt(20)
-
-                for b in bullets[1:]:
-                    p = tf.add_paragraph()
-                    p.text = b
-                    p.level = 0
-                    for run in p.runs:
-                        run.font.size = Pt(18)
-
-        notes_text = "\n".join(notes_lines if notes_lines else bullets)
-
-        try:
-            slide.notes_slide.notes_text_frame.text = notes_text
-        except Exception:
-            pass
+        # 3. Notas del orador
+        if notes_text:
+            try:
+                slide.notes_slide.notes_text_frame.text = notes_text
+            except Exception:
+                pass
 
     pptx_io = BytesIO()
     prs.save(pptx_io)
     return pptx_io.getvalue()
-
 # ======================================================================================================================
 # POWERPOINT CREATION FUNCTION
 # ======================================================================================================================
@@ -163,6 +163,26 @@ def crear_pdf(texto_generado):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=LETTER)
     width, height = LETTER
+    styles = getSampleStyleSheet()
+    
+    # Definimos un estilo para el cuerpo que permita párrafos largos
+    body_style = ParagraphStyle(
+        'BodyStyle',
+        parent=styles['Normal'],
+        fontSize=12,
+        leading=16,      # Espacio entre líneas
+        alignment=0,     # Alineado a la izquierda
+        spaceAfter=10
+    )
+    
+    # Estilo para el título
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontSize=22,
+        leading=26,
+        spaceAfter=20
+    )
 
     pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
     slides = re.findall(pattern, texto_generado, flags=re.S)
@@ -175,24 +195,30 @@ def crear_pdf(texto_generado):
         if not lines:
             continue
 
-        title = lines[0]
-
-        bullets = []
-        for line in lines[1:]:
-            if line.lower().startswith("notes"):
+        title_text = lines[0]
+        
+        # Separar notas del cuerpo
+        notes_idx = None
+        for i, ln in enumerate(lines):
+            if ln.lower().startswith(("notes", "notes_slide", "notes:")):
+                notes_idx = i
                 break
-            bullets.append(re.sub(r'^[\*\-\u2022]\s*', '', line))
+        
+        body_lines = lines[1:notes_idx] if notes_idx is not None else lines[1:]
+        # Limpiamos posibles viñetas residuales y unimos en un solo párrafo
+        body_text = " ".join([re.sub(r'^[\*\-\u2022]\s*', '', l) for l in body_lines])
 
-        y = height - 1.2 * inch
+        # Dibujar Título con ajuste automático
+        p_title = Paragraph(title_text, title_style)
+        # Le damos un ancho máximo (ancho de hoja menos márgenes)
+        w_t, h_t = p_title.wrap(width - 2*inch, height)
+        p_title.drawOn(c, 1*inch, height - 1.2 * inch - h_t)
 
-        c.setFont("Helvetica-Bold", 20)
-        c.drawString(1 * inch, y, title)
-        y -= 0.6 * inch
-
-        c.setFont("Helvetica", 14)
-        for bullet in bullets:
-            c.drawString(1.2 * inch, y, f"• {bullet}")
-            y -= 0.35 * inch
+        # Dibujar Cuerpo con ajuste automático
+        p_body = Paragraph(body_text, body_style)
+        w_b, h_b = p_body.wrap(width - 2*inch, height)
+        # Se dibuja debajo del título dejando un margen
+        p_body.drawOn(c, 1*inch, height - 1.5 * inch - h_t - h_b)
 
         c.showPage()
 
@@ -241,54 +267,47 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
         modelo_gemini = GenAI.GenerativeModel('models/gemini-2.5-flash')
 
         instruction = f"""
-Analyze the following audio transcription and generate a presentation based ONLY on its content:
+        Analyze the following audio transcription and generate a presentation based ONLY on its content:
 
-{resultado['text']}
+        {resultado['text']}
 
-=== LANGUAGE RULE (MANDATORY) ===
-1. Detect the original language of the transcription.
-2. ALL output (slides and notes) MUST be written 100% in that same language.
-3. Do NOT translate the content.
-4. Ignore the language of these instructions; follow ONLY the language of the transcription.
+        === REGLA DE IDIOMA (OBLIGATORIA) ===
 
-=== CONTENT RULE ===
-Generate slides that summarize, organize, and explain the ideas PRESENT IN THE TRANSCRIPTION.
-Do NOT invent topics.
-Do NOT add external information.
-Base every slide strictly on what is said in the audio.
+        Detecta el idioma original de la transcripción.
 
-=== SLIDE GENERATION RULES ===
+        TODO el resultado (diapositivas y notas) DEBE estar escrito al 100% en ese mismo idioma.
 
-• Create a presentation with a MINIMUM of 5 slides.
-• Each slide must represent a distinct idea or section derived from the transcription.
-• Slides must be clearly separated using EXACTLY this format:
+        === REGLA DE ENFOQUE (AGENTE DE ANÁLISIS) ===
+        • Actúa como un AGENTE ESTRATÉGICO que extrae conceptos y los organiza para una presentación corporativa o académica.
+        • NO menciones al "usuario" ni digas "la transcripción dice". Simplemente presenta la información como hechos o pilares del proyecto.
+        • Transforma las ideas breves en conceptos desarrollados.
+        * Ejemplo: Si el audio menciona "villanos científicos", la diapositiva debe titularse "Naturaleza de la Oposición" y explicar en un párrafo la metodología y origen de esos antagonistas.
 
---- SLIDE N ---
+        === REGLAS DE GENERACIÓN ===
+        • Crea una presentación con un MÍNIMO de 5 diapositivas.
+        • Cada diapositiva debe representar un pilar o sección lógica del contenido.
 
-=== SLIDE STRUCTURE (MANDATORY) ===
+        === ESTRUCTURA DE LA DIAPOSITIVA (OBLIGATORIA) ===
 
-Title  
-• Bullet point  
-• Bullet point  
+        --- SLIDE N ---
 
-notes_slide:
-Write natural, detailed speaker notes explaining the slide content as if a real presenter were speaking.
-The notes must expand the bullets using only information from the transcription.
+        Título (Directo y profesional)
+        [Texto de la diapositiva]
+        Escribe un párrafo de 4 a 6 líneas que explique detalladamente el concepto.
+        PROHIBIDO EL USO DE VIÑETAS O LISTAS. El texto debe ser continuo y fluido.
 
-=== FORMAT RULES ===
-• Do NOT place notes outside `notes_slide`.
-• Do NOT add explanations, comments, or text outside the defined structure.
-• Output MUST be strictly formatted for automated slide + speaker notes generation.
-• If the transcription is short, still generate slides by grouping ideas logically.
+        notes_slide:
+        Escribe un guion profesional para el presentador. Debe profundizar en el porqué de ese concepto y cómo se conecta con el resto de la presentación, usando un lenguaje formal.
 
-=== FALLBACK RULE ===
-If the transcription does NOT contain enough information to build slides:
-• Generate ONLY ONE slide.
-• State clearly that the audio does not provide sufficient structured content.
-• Include a `notes_slide` explaining this.
+        === REGLAS DE FORMATO ===
+        • SIN LISTAS DE PUNTOS. Solo prosa bien redactada.
+        • NO incluyas introducciones como "Aquí tienes la presentación".
+        • El resultado debe ser exclusivamente el contenido de las diapositivas.
 
-Return ONLY the structured slide content.
+        === REGLA DE RESPALDO ===
+        Si la transcripción es muy corta, expande los puntos mencionados con deducciones lógicas profesionales para alcanzar las 5 diapositivas (ej. si menciona "historia larga", dedica una diapositiva a la "Estructura Narrativa y Alcance del Proyecto").
 
+        Devuelve SOLO el contenido estructurado.
         """
 
         answer = modelo_gemini.generate_content(instruction)
@@ -322,4 +341,3 @@ Return ONLY the structured slide content.
 
     if os.path.exists("temp_audio.wav"):
         os.remove("temp_audio.wav")
-
