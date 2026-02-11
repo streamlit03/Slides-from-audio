@@ -1,101 +1,87 @@
+Here is the complete, professional README.md in English. It is designed to be highly readable, technical enough for developers, and clear enough for any user who finds your repository.
+
 🪄 AI Transcription & Slide Creator
-Turn your voice into a professional presentation in seconds. This application records or accepts audio, transcribes it locally using OpenAI's Whisper, analyzes the content with Google Gemini, and automatically generates a downloadable PowerPoint (.pptx) and PDF with structured slides and speaker notes.
+Turn your voice into professional, high-level corporate presentations in seconds. This application leverages state-of-the-art AI to transcribe audio, analyze strategic content, and automatically generate editable PowerPoint and PDF files. It doesn't just transcribe; it acts as a Strategic Consultant to structure your ideas into a professional narrative.
 
 🌟 Key Features
-🎙️ Audio Flexibility: Record directly in the browser or upload files (mp3, wav, m4a, etc.).
+🎙️ Dual Audio Input: Record directly via your browser or upload existing files (mp3, wav, m4a, etc.).
 
-🧠 Local Intelligence: Uses OpenAI Whisper (Base Model) for high-accuracy, privacy-focused transcription.
+🌍 Intelligent Language Detection: The system automatically detects the audio language and adapts the entire output (including UI labels like "Speaker Notes") to match the detected language.
 
-✨ Generative AI: Powered by Google Gemini 2.5 Flash to structure unstructured speech into logical slides (Title + Content + Speaker Notes).
+🧠 Hybrid AI Architecture: * Whisper (OpenAI): High-precision local transcription.
 
-🌍 Smart Language Detection: Automatically detects the audio language (English, Spanish, French, etc.) and generates the presentation and UI labels in the matching language.
+Gemini 2.5 Flash (Google): Advanced LLM for semantic analysis and executive prose generation.
 
-📊 Dual Export: Download your deck as an editable PowerPoint (.pptx) or a ready-to-print PDF.
+📊 Automated Document Rendering: Generates structured slides (Title, Body, and Speaker Notes) without manual intervention.
 
-🎨 Custom Styling: Custom fonts, background styling, and layout handling for a corporate look.
+🎨 Modern UI/UX: Styled with custom CSS, glassmorphism effects, and dynamic backgrounds for a premium experience.
 
-🛠️ Tech Stack
-Frontend: Streamlit
+🛠️ Technical Tech Stack
+Framework: Streamlit
 
-AI Models:
+Transcription Engine: openai-whisper (Base model)
 
-Audio-to-Text: openai-whisper
+Generative Engine: google-generativeai (Gemini 2.5 Flash)
 
-Text-to-Content: google-generativeai (Gemini API)
+Document Processing:
 
-Document Generation:
+python-pptx: For dynamic PowerPoint generation.
 
-python-pptx (for PowerPoint)
+reportlab: For high-fidelity PDF canvas drawing.
 
-reportlab (for PDF)
+Parsing: Regular Expressions (re) for structured data extraction.
 
-🚀 Installation & Local Setup
+🧠 Code Logic & Data Flow
+This project follows a sophisticated data pipeline to ensure professional results:
+
+Ingestion: Captures audio buffer, validating file size (up to 30MB).
+
+Transcription & Meta-data: Whisper processes the audio, returning raw text and a detected_language_code (e.g., es, en, fr).
+
+Dynamic Language Mapping: A translation dictionary (translations_map) uses the language code to localize labels in the final document, ensuring "Speaker Notes" appears in the correct language.
+
+Strategic Prompting: Gemini is instructed to act as a Strategic Consultant. It is specifically forbidden from using bullet points, forced to use fluid prose, and tasked with creating exactly 5 slides even from short inputs.
+
+Structural Parsing: Using Regex, the script isolates Slide Titles, Body Content, and Speaker Notes marked by ###NOTAS###.
+
+Rendering: The content is injected into a template.pptx base, programmatically adjusting font sizes (Pt) and layouts to prevent text overflow.
+
+🚀 Local Setup
 1. Prerequisites
-Python 3.9+
-
-FFmpeg installed on your system (Required for Whisper).
-
-Mac: brew install ffmpeg
+You must have FFmpeg installed on your system for Whisper to handle audio processing.
 
 Windows: choco install ffmpeg
 
+MacOS: brew install ffmpeg
+
 Linux: sudo apt install ffmpeg
 
-2. Setup
+2. Installation
 Bash
-# Clone the repository
 git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
 cd YOUR_REPO_NAME
-
-# Install dependencies
 pip install -r requirements.txt
-3. API Configuration
-Get your key from Google AI Studio.
-
-Create a file .streamlit/secrets.toml:
+3. API Secrets
+Create a .streamlit/secrets.toml file:
 
 Ini, TOML
-API_KEY = "YOUR_GOOGLE_GEMINI_API_KEY_HERE"
+API_KEY = "YOUR_GOOGLE_GEMINI_API_KEY"
 ☁️ Deployment on Streamlit Cloud
-This project is optimized to run on Streamlit Community Cloud. To deploy it successfully, you must ensure two files are in your root folder:
+The project is pre-configured for Streamlit Community Cloud. To ensure a successful deployment, two configuration files are included:
 
-1. Mandatory Files for Cloud
-requirements.txt: List of Python libraries.
+requirements.txt: Defines the Python environment.
 
-Plaintext
-streamlit
-openai-whisper
-google-generativeai
-python-pptx
-reportlab
-setuptools
-packages.txt: This is essential. It tells the Streamlit server to install the ffmpeg system binary, without which Whisper will fail.
+packages.txt: Mandatory. It contains the word ffmpeg. This instructs the Streamlit server to install the FFmpeg binary at the system level before the app starts. Without this, Whisper will fail.
 
-Plaintext
-ffmpeg
-2. Cloud Secrets Setup
-Do not upload your secrets.toml to GitHub. Instead:
+Cloud Deployment Steps:
+Push your code to a GitHub repository.
 
-Go to your app settings on the Streamlit Cloud Dashboard.
+Connect the repo to Streamlit Cloud.
 
-Find the Secrets section.
+In Advanced Settings > Secrets, paste your API_KEY.
 
-Paste your API key there:
+Deploy!
 
-Ini, TOML
-API_KEY = "your_real_key_here"
-🧠 How it Works
-Transcription: The audio is processed by Whisper, which identifies the language and converts speech to text.
 
-Strategic Analysis: The text is sent to Gemini with a specialized "Strategic Consultant" prompt. It requests a structure of exactly 5 slides with professional prose (no bullet points) and speaker notes.
-
-Dynamic Rendering: * The script identifies the language code from Whisper (e.g., es, en).
-
-It maps the language to the correct label for speaker notes (e.g., "NOTAS DE ORADOR" or "SPEAKER NOTES").
-
-It injects the text into a template.pptx file.
-
-Export: The user receives two download buttons for the generated files.
-
-🤝 Contributing
-Feel free to fork this project, open issues, or submit pull requests to improve the prompt engineering or the PDF styling!
+💡 Final Tip
+Ensure the template.pptx file is in your root directory. This file acts as the "canvas" for the PowerPoint generation; without it, the crear_pptx function will not have a base to build upon.
