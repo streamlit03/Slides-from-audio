@@ -1,7 +1,3 @@
-¡Perfecto! Aquí tienes el archivo README.md completo, diseñado para que destaque en tu perfil de GitHub. Incluye secciones de arquitectura, configuración, despliegue y hasta una guía de "cómo funciona".
-
-Copia y pega todo el bloque de abajo:
-
 🪄 AI Transcription & Slide Creator
 Turn your voice into a professional presentation in seconds. This application records or accepts audio, transcribes it locally using OpenAI's Whisper, analyzes the content with Google Gemini, and automatically generates a downloadable PowerPoint (.pptx) and PDF with structured slides and speaker notes.
 
