@@ -1,7 +1,3 @@
-# ======================================================================================================================
-# LIBRARIES & ENVIRONMENT
-# ======================================================================================================================
-
 import os
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +12,9 @@ from pptx import Presentation
 from io import BytesIO
 from pptx.util import Pt
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.dml.color import RGBColor
+from pptx.util import Inches
+
 
 
 from reportlab.lib.pagesizes import LETTER
@@ -88,12 +87,16 @@ GenAI.configure(api_key=st.secrets["API_KEY"])
 
 
 # ======================================================================================================================
-# POWERPOINT CREATION FUNCTION
+# POWERPOINT CREATION FUNCTION (MODIFICADA)
 # ======================================================================================================================
-def crear_pptx(texto_generado):
+# AHORA RECIBE EL ARGUMENTO: titulo_notas
+def crear_pptx(texto_generado, titulo_notas="SPEAKER NOTES"):
     prs = Presentation("template.pptx")
+    
+    # Dimensiones estándar de una diapositiva (en puntos)
+    SLIDE_WIDTH = prs.slide_width
+    SLIDE_HEIGHT = prs.slide_height
 
-    # Patrón mejorado para capturar el bloque completo entre diapositivas
     pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
     slides = re.findall(pattern, texto_generado, flags=re.S)
 
@@ -101,124 +104,141 @@ def crear_pptx(texto_generado):
         slides = [s for s in re.split(r"---\s*SLIDE", texto_generado) if s.strip()]
 
     for slide_text in slides:
-        lines = [l.strip() for l in slide_text.strip().splitlines() if l.strip()]
-        if not lines:
-            continue
+        slide_text = slide_text.strip()
+        if not slide_text: continue
 
-        # El primer elemento es siempre el Título
-        title_text = lines[0]
-
-        # Identificamos dónde empiezan las notas para separar el cuerpo
-        notes_idx = None
-        for i, ln in enumerate(lines):
-            if ln.lower().startswith(("notes", "notes_slide", "notes:")):
-                notes_idx = i
-                break
-
-        # Extraemos el cuerpo (párrafo) y las notas
-        if notes_idx is not None:
-            body_content = "\n".join(lines[1:notes_idx])
-            notes_text = "\n".join(lines[notes_idx + 1:])
+        # Separación de contenido
+        if "###NOTAS###" in slide_text:
+            partes = slide_text.split("###NOTAS###")
+            lineas = partes[0].strip().splitlines()
+            title_text = lineas[0].strip() if lineas else "Sin Título"
+            body_content = "\n".join(lineas[1:]).strip()
+            notes_text = partes[1].strip()
         else:
-            body_content = "\n".join(lines[1:])
+            lineas = [l.strip() for l in slide_text.splitlines() if l.strip()]
+            title_text = lineas[0] if lineas else "Sin Título"
+            body_content = "\n".join(lineas[1:])
             notes_text = ""
 
-        # Usamos el layout 1 (Título y Objetos)
+        # Crear diapositiva limpia
         slide = prs.slides.add_slide(prs.slide_layouts[1])
 
-        # 1. Configurar Título (con tamaño controlado)
+        # --- CONFIGURACIÓN DEL TÍTULO ---
         if slide.shapes.title:
-            slide.shapes.title.text = title_text
-            for paragraph in slide.shapes.title.text_frame.paragraphs:
-                for run in paragraph.runs:
-                    run.font.size = Pt(32) # Tamaño ideal para títulos largos
-
-        # 2. Configurar Cuerpo (como un solo párrafo fluido)
-        if len(slide.placeholders) > 1:
-            tf = slide.placeholders[1].text_frame
-            tf.clear()
-            tf.word_wrap = True # Evita que el texto se salga horizontalmente
-            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE # Ajuste automático si sobra texto
+            title_shape = slide.shapes.title
+            title_shape.left = Pt(40)
+            title_shape.top = Pt(20)
+            title_shape.width = SLIDE_WIDTH - Pt(80) 
+            title_shape.height = Pt(90) 
             
+            title_shape.text = title_text
+            tf_title = title_shape.text_frame
+            tf_title.word_wrap = True
+            tf_title.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE 
+            
+            for paragraph in tf_title.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(28) 
+
+        # --- CONFIGURACIÓN DEL CUERPO Y NOTAS ---
+        if len(slide.placeholders) > 1:
+            body_shape = slide.placeholders[1]
+            body_shape.left = Pt(40)
+            body_shape.top = Pt(130) 
+            body_shape.width = SLIDE_WIDTH - Pt(80)
+            body_shape.height = SLIDE_HEIGHT - Pt(150) 
+
+            tf = body_shape.text_frame
+            tf.clear()
+            tf.word_wrap = True
+            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            # Párrafo principal
             p = tf.paragraphs[0]
             p.text = body_content
-            for run in p.runs:
-                run.font.size = Pt(18) # Tamaño de lectura para párrafos extensos
-
-        # 3. Notas del orador
-        if notes_text:
-            try:
-                slide.notes_slide.notes_text_frame.text = notes_text
-            except Exception:
-                pass
+            p.font.size = Pt(16)
+            
+            if notes_text:
+                tf.add_paragraph() # Espacio en blanco
+                
+                # Etiqueta Notas (USANDO LA VARIABLE DINÁMICA)
+                p_label = tf.add_paragraph()
+                p_label.text = f"➤ {titulo_notas}:" 
+                p_label.font.bold = True
+                p_label.font.size = Pt(12)
+                p_label.font.color.rgb = RGBColor(100, 100, 100) 
+                
+                # Contenido Notas
+                p_notes = tf.add_paragraph()
+                p_notes.text = notes_text
+                p_notes.font.italic = True
+                p_notes.font.size = Pt(11)
+                p_notes.font.color.rgb = RGBColor(120, 120, 120)
 
     pptx_io = BytesIO()
     prs.save(pptx_io)
     return pptx_io.getvalue()
-# ======================================================================================================================
-# POWERPOINT CREATION FUNCTION
-# ======================================================================================================================
 
-def crear_pdf(texto_generado):
+# ======================================================================================================================
+# PDF CREATION FUNCTION (MODIFICADA)
+# ======================================================================================================================
+# AHORA RECIBE EL ARGUMENTO: titulo_notas
+def crear_pdf(texto_generado, titulo_notas="SPEAKER NOTES"):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=LETTER)
     width, height = LETTER
     styles = getSampleStyleSheet()
     
-    # Definimos un estilo para el cuerpo que permita párrafos largos
-    body_style = ParagraphStyle(
-        'BodyStyle',
-        parent=styles['Normal'],
-        fontSize=12,
-        leading=16,      # Espacio entre líneas
-        alignment=0,     # Alineado a la izquierda
-        spaceAfter=10
-    )
-    
-    # Estilo para el título
-    title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontSize=22,
-        leading=26,
-        spaceAfter=20
-    )
+    # Estilos
+    body_style = ParagraphStyle('Body', fontSize=11, leading=14, spaceAfter=10)
+    title_style = ParagraphStyle('Title', fontSize=20, leading=24, spaceAfter=20, fontName='Helvetica-Bold')
+    label_style = ParagraphStyle('Label', fontSize=10, leading=12, fontName='Helvetica-BoldOblique', textColor='grey')
+    note_content_style = ParagraphStyle('NoteBody', fontSize=9, leading=11, leftIndent=10, textColor='grey')
 
-    pattern = r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)"
-    slides = re.findall(pattern, texto_generado, flags=re.S)
-
-    if not slides:
-        slides = [s for s in re.split(r"---\s*SLIDE", texto_generado) if s.strip()]
+    slides = re.findall(r"---\s*SLIDE\s*\d+\s*---\s*(.*?)\s*(?=(?:---\s*SLIDE\s*\d+\s*---)|\Z)", texto_generado, flags=re.S)
+    if not slides: slides = [s for s in re.split(r"---\s*SLIDE", texto_generado) if s.strip()]
 
     for slide_text in slides:
-        lines = [l.strip() for l in slide_text.splitlines() if l.strip()]
-        if not lines:
-            continue
+        if "###NOTAS###" in slide_text:
+            partes = slide_text.split("###NOTAS###")
+            content_lines = [l.strip() for l in partes[0].strip().splitlines() if l.strip()]
+            title_text = content_lines[0]
+            body_text = " ".join(content_lines[1:])
+            notes_text = partes[1].strip()
+        else:
+            lines = [l.strip() for l in slide_text.splitlines() if l.strip()]
+            title_text = lines[0]
+            body_text = " ".join(lines[1:])
+            notes_text = ""
 
-        title_text = lines[0]
-        
-        # Separar notas del cuerpo
-        notes_idx = None
-        for i, ln in enumerate(lines):
-            if ln.lower().startswith(("notes", "notes_slide", "notes:")):
-                notes_idx = i
-                break
-        
-        body_lines = lines[1:notes_idx] if notes_idx is not None else lines[1:]
-        # Limpiamos posibles viñetas residuales y unimos en un solo párrafo
-        body_text = " ".join([re.sub(r'^[\*\-\u2022]\s*', '', l) for l in body_lines])
+        curr_y = height - 1*inch
 
-        # Dibujar Título con ajuste automático
+        # Dibujar Título
         p_title = Paragraph(title_text, title_style)
-        # Le damos un ancho máximo (ancho de hoja menos márgenes)
-        w_t, h_t = p_title.wrap(width - 2*inch, height)
-        p_title.drawOn(c, 1*inch, height - 1.2 * inch - h_t)
+        w, h = p_title.wrap(width - 2*inch, height)
+        curr_y -= h
+        p_title.drawOn(c, 1*inch, curr_y)
 
-        # Dibujar Cuerpo con ajuste automático
+        # Dibujar Cuerpo
+        curr_y -= 0.3*inch
         p_body = Paragraph(body_text, body_style)
-        w_b, h_b = p_body.wrap(width - 2*inch, height)
-        # Se dibuja debajo del título dejando un margen
-        p_body.drawOn(c, 1*inch, height - 1.5 * inch - h_t - h_b)
+        w, h = p_body.wrap(width - 2*inch, height)
+        curr_y -= h
+        p_body.drawOn(c, 1*inch, curr_y)
+
+        # Dibujar Notas si existen
+        if notes_text:
+            curr_y -= 0.4*inch
+            # Etiqueta Notas (USANDO LA VARIABLE DINÁMICA)
+            p_label = Paragraph(f"{titulo_notas}:", label_style)
+            w, h = p_label.wrap(width - 2*inch, height)
+            curr_y -= h
+            p_label.drawOn(c, 1*inch, curr_y)
+
+            p_note = Paragraph(notes_text, note_content_style)
+            w, h = p_note.wrap(width - 2.2*inch, height)
+            curr_y -= h
+            p_note.drawOn(c, 1.2*inch, curr_y)
 
         c.showPage()
 
@@ -251,9 +271,13 @@ if Audio_fill is not None:
     with st.spinner("Whisper is processing your audio"):
         modelo_whisper = load_whisper()
         resultado = modelo_whisper.transcribe("temp_audio.wav")
+        
+        #DETECCIÓN DE IDIOMA 
+        detected_language_code = resultado.get("language", "en")
 
 
     with st.expander("Show transcription"):
+        st.write(f"Detected Language: {detected_language_code}")
         st.write(resultado["text"])
 
 
@@ -263,52 +287,67 @@ if Audio_fill is not None:
 
 if Audio_fill is not None and st.button("✨ Generative Slides"):
 
+    # Diccionario simple con los idiomas más comunes, por defecto usa Inglés
+    translations_map = {
+        "es": "NOTAS DE ORADOR",
+        "en": "SPEAKER NOTES",
+        "fr": "NOTES DE L'ORATEUR",
+        "de": "SPRECHERNOTIZEN",
+        "it": "NOTE DEL RELATORE",
+        "pt": "NOTAS DO ORADOR",
+        "ru": "ЗАМЕТКИ ДОКЛАДЧИКА",
+        "zh": "演讲者备注",
+        "ja": "スピーカーノート"
+    }
+    
+    # Selecciona la traducción basada en el código de Whisper 
+    titulo_notas_final = translations_map.get(detected_language_code, "SPEAKER NOTES")
+
+
     with st.spinner("Gemini is creating your slides..."):
         modelo_gemini = GenAI.GenerativeModel('models/gemini-2.5-flash')
 
         instruction = f"""
-        Analyze the following audio transcription and generate a presentation based ONLY on its content:
+        CORE MISSION: Analyze the provided transcription and generate a professional presentation based ONLY on its content.
 
-        {resultado['text']}
+        [STRICT LANGUAGE RULE]
 
-        === REGLA DE IDIOMA (OBLIGATORIA) ===
+        Identify the language of the input: {resultado['text']}.
 
-        Detecta el idioma original de la transcripción.
+        ALL generated content MUST be in that exact language.
 
-        TODO el resultado (diapositivas y notas) DEBE estar escrito al 100% en ese mismo idioma.
+        DO NOT translate. If the input is Spanish, the output is 100% Spanish.
 
-        === REGLA DE ENFOQUE (AGENTE DE ANÁLISIS) ===
-        • Actúa como un AGENTE ESTRATÉGICO que extrae conceptos y los organiza para una presentación corporativa o académica.
-        • NO menciones al "usuario" ni digas "la transcripción dice". Simplemente presenta la información como hechos o pilares del proyecto.
-        • Transforma las ideas breves en conceptos desarrollados.
-        * Ejemplo: Si el audio menciona "villanos científicos", la diapositiva debe titularse "Naturaleza de la Oposición" y explicar en un párrafo la metodología y origen de esos antagonistas.
+        STRATEGIC AGENT ROLE:
 
-        === REGLAS DE GENERACIÓN ===
-        • Crea una presentación con un MÍNIMO de 5 diapositivas.
-        • Cada diapositiva debe representar un pilar o sección lógica del contenido.
+        Act as a Strategic Consultant. Transform the transcript into a high-level corporate/academic narrative.
 
-        === ESTRUCTURA DE LA DIAPOSITIVA (OBLIGATORIA) ===
+        NO META-COMMENTARY: Do not use phrases like "The transcript says" or "This slide covers." State information as objective, established facts.
 
-        --- SLIDE N ---
+        DEVELOPMENT: Expand brief mentions into sophisticated, professional concepts.
 
-        Título (Directo y profesional)
-        [Texto de la diapositiva]
-        Escribe un párrafo de 4 a 6 líneas que explique detalladamente el concepto.
-        PROHIBIDO EL USO DE VIÑETAS O LISTAS. El texto debe ser continuo y fluido.
+        OUTPUT FORMAT (MANDATORY STRUCTURE): Generate at least 5 slides. Use the following structure for each one, but DO NOT include labels like "Title:", "Text:", or "Notes:".
 
-        notes_slide:
-        Escribe un guion profesional para el presentador. Debe profundizar en el porqué de ese concepto y cómo se conecta con el resto de la presentación, usando un lenguaje formal.
+        --- SLIDE [N] ---
 
-        === REGLAS DE FORMATO ===
-        • SIN LISTAS DE PUNTOS. Solo prosa bien redactada.
-        • NO incluyas introducciones como "Aquí tienes la presentación".
-        • El resultado debe ser exclusivamente el contenido de las diapositivas.
+        [Insert Professional Title Here]
+        [Insert here a single paragraph of 4 to 6 lines. Use fluid and professional prose. STRICTLY PROHIBITED: Bullet points, lists, or internal labels.]
 
-        === REGLA DE RESPALDO ===
-        Si la transcripción es muy corta, expande los puntos mencionados con deducciones lógicas profesionales para alcanzar las 5 diapositivas (ej. si menciona "historia larga", dedica una diapositiva a la "Estructura Narrativa y Alcance del Proyecto").
+        ###NOTAS###
+        [Insert here a professional script for the speaker in the SAME language as the transcript. Explain the "why" behind the concept and its strategic connection to the next slide.]
 
-        Devuelve SOLO el contenido estructurado.
-        """
+        STRICT CONSTRAINTS:
+
+        NO LABELS: Do not write the words "Title", "Text", "Slide", or "notes_slide" inside the content. Use only the Markdown Header (▶) for the title.
+
+        NO LISTS: Use only continuous paragraphs.
+
+        SILENT EXECUTION: Do not include greetings, introductions, or conclusions (e.g., "Here are your slides"). Return ONLY the structured slide content.
+
+        MINIMUM VOLUME: If the transcript is short, use logical professional deduction to reach exactly 5 slides.
+
+        INPUT DATA: {resultado['text']}
+                """
 
         answer = modelo_gemini.generate_content(instruction)
 
@@ -316,8 +355,9 @@ if Audio_fill is not None and st.button("✨ Generative Slides"):
     with st.expander("Show Content"):
         st.write(answer.text)
 
-    pptx_data = crear_pptx(answer.text)
-    pdf_data = crear_pdf(answer.text)
+    #PASAMOS EL TÍTULO TRADUCIDO A LAS FUNCIONES
+    pptx_data = crear_pptx(answer.text, titulo_notas_final)
+    pdf_data = crear_pdf(answer.text, titulo_notas_final)
 
     st.download_button(
         label="🚀 DOWNLOAD YOUR POWERPOINT",
