@@ -1,5 +1,3 @@
-Here is the complete, professional README.md in English. It is designed to be highly readable, technical enough for developers, and clear enough for any user who finds your repository.
-
 🪄 AI Transcription & Slide Creator
 Turn your voice into professional, high-level corporate presentations in seconds. This application leverages state-of-the-art AI to transcribe audio, analyze strategic content, and automatically generate editable PowerPoint and PDF files. It doesn't just transcribe; it acts as a Strategic Consultant to structure your ideas into a professional narrative.
 
